@@ -9,12 +9,14 @@ int cell_size = 30;
 int cell_number = 25;
 int direct = 2;
 int set = 75;
+
 double lastUpdateTime = 0;
 
 Color background = {144, 238, 144, 255};
 Color snake_color = {0, 100, 0, 255};
 Color food_color = {255, 0, 0, 255};
 Color border = {2, 48, 32, 255};
+Color obstacle_color = {139, 69, 19, 255};
 
 bool event(double interval)
 {
@@ -107,30 +109,65 @@ class Game
 public:
     Snake snake = Snake();
     Food food = Food();
+
+    deque<Vector2> obstacle1;
+    deque<Vector2> obstacle2;
+
     bool running = true;
     bool gameOver = false;
+    bool paused = false; // To handle the pause state
     int score = 0;
+
+    Game()
+    {
+        obstacle1 = create_L_obstacle(5, 1, false);  // First standard L-shaped obstacle
+        obstacle2 = create_L_obstacle(15, 15, true); // Second reversed L-shaped obstacle
+    }
 
     void draw()
     {
         snake.draw();
         food.draw();
+        draw_obstacles();
 
         if (gameOver)
         {
             DrawText("GAME OVER", set + 250, set + (cell_size * cell_number) / 2, 40, border);
-            DrawText(TextFormat("SCORE = %i", score), set + 250, set + (cell_size * cell_number) / 2 + 50, 40, border);
+            DrawText(TextFormat("SCORE = %i", score), set + 535, set + (cell_size * cell_number) / 2, 40, border);
+        }
+
+        if (paused)
+        {
+            DrawRectangle(set + 100, set + 150, 500, 200, Fade(border, 0.9f));
+            DrawText("PAUSED", set + 150, set + 180, 40, food_color);
+            DrawText("CONTINUE? (Y/N)", set + 120, set + 240, 30, food_color);
         }
     }
 
     void update()
     {
+        if (paused)
+        {
+            if (IsKeyPressed(KEY_Y))
+            {
+                paused = false;
+                running = true;
+                score = max(0, score - 10); // Reduce 10 points, ensuring score doesn't go negative
+            }
+            else if (IsKeyPressed(KEY_N))
+            {
+                game_over();
+            }
+            return; // Skip further updates while paused
+        }
+
         if (running)
         {
             snake.update();
             collision_food();
             collision_wall();
             collision_tail();
+            collision_obstacles();
         }
     }
 
@@ -163,12 +200,49 @@ public:
         }
     }
 
+    void collision_obstacles()
+    {
+        for (Vector2 pos : obstacle1)
+        {
+            if (Vector2Equals(snake.body[0], pos))
+            {
+                pause_game();
+                return;
+            }
+        }
+
+        for (Vector2 pos : obstacle2)
+        {
+            if (Vector2Equals(snake.body[0], pos))
+            {
+                pause_game();
+                return;
+            }
+        }
+    }
+
+    void draw_obstacles()
+    {
+        for (Vector2 pos : obstacle1)
+        {
+            DrawRectangle(set + pos.x * cell_size, set + pos.y * cell_size, cell_size, cell_size, border);
+        }
+
+        for (Vector2 pos : obstacle2)
+        {
+            DrawRectangle(set + pos.x * cell_size, set + pos.y * cell_size, cell_size, cell_size, border);
+        }
+    }
+
+    void pause_game()
+    {
+        running = false;
+        paused = true;
+    }
+
     void game_over()
     {
-        gameOver = true;
-        running = false;
-
-        
+        // Draw "GAME OVER" screen and wait for key press
         while (true)
         {
             BeginDrawing();
@@ -178,41 +252,91 @@ public:
             DrawText("PROJECT-150 --> SNAKE GAME", set - 5, 20, 40, border);
             DrawText(TextFormat("SCORE = %i", score), set - 5, set + (cell_size * cell_number) + 10, 40, border);
 
+            // Draw "GAME OVER" message
             DrawText("GAME OVER", set + 250, set + (cell_size * cell_number) / 2, 40, border);
             DrawText(TextFormat("SCORE = %i", score), set + 250, set + (cell_size * cell_number) / 2 + 50, 40, border);
-            DrawText("PRESS ANY KEY TO RESTART", set + 100, set + (cell_size * cell_number) / 2 + 100, 30, food_color);
+            DrawText("PRESS ANY KEY TO CONTINUE...", set + 100, set + (cell_size * cell_number) / 2 + 100, 30, food_color);
 
             EndDrawing();
 
-            if (GetKeyPressed() != 0)
+            if (GetKeyPressed() != 0) // Detect any key press
             {
                 break;
             }
         }
 
-    
+        // Reset the game state after "GAME OVER" is cleared
         snake.reset();
         food.position = food.random();
         score = 0;
-        running = true;
+        running = false;
+        paused = false;
         gameOver = false;
+    }
+
+    deque<Vector2> create_L_obstacle(int start_x, int start_y, bool reversed)
+    {
+        deque<Vector2> obstacle;
+
+        if (reversed)
+        {
+            // Vertical part of the reversed L
+            for (int i = 0; i < 5; i++)
+            {
+                obstacle.push_back(Vector2{(float)(start_x + 4), (float)(start_y + i)});
+            }
+
+            // Horizontal part of the reversed L
+            for (int i = 0; i < 4; i++)
+            {
+                obstacle.push_back(Vector2{(float)(start_x + i), (float)start_y});
+            }
+        }
+        else
+        {
+            // Vertical part of the L
+            for (int i = 0; i < 5; i++)
+            {
+                obstacle.push_back(Vector2{(float)start_x, (float)(start_y + i)});
+            }
+
+            // Horizontal part of the L
+            for (int i = 1; i < 5; i++)
+            {
+                obstacle.push_back(Vector2{(float)(start_x + i), (float)(start_y + 4)});
+            }
+        }
+
+        return obstacle;
     }
 };
 
 int main()
 {
-    InitWindow(2 * set + cell_number * cell_size, 2 * set + cell_number * cell_size, "project-150");
-    SetTargetFPS(65);
+    InitWindow(2 * set + cell_size * cell_number, 2 * set + cell_size * cell_number, "Snake Game");
+    SetTargetFPS(10);
 
     Game game = Game();
 
     while (!WindowShouldClose())
     {
         BeginDrawing();
-
-        if (event(0.2))
+        
+        if (event(0.1))
         {
             game.update();
+        }
+
+        if(IsKeyPressed(KEY_N))
+        {
+            game.game_over();
+        }
+
+        if (game.paused && IsKeyPressed(KEY_Y))
+        {
+            game.paused = false;
+            game.running = true;
+            game.score = max(0, game.score - 10); // Reduce 10 points, ensuring score doesn't go negative
         }
 
         if (IsKeyPressed(KEY_UP) && game.snake.direction.y != 1)
@@ -242,7 +366,6 @@ int main()
         ClearBackground(background);
 
         DrawRectangleLinesEx(Rectangle{(float)set - 5, (float)set - 5, (float)cell_size * cell_number + 10, (float)cell_size * cell_number + 10}, 5, border);
-
         DrawText("PROJECT-150 --> SNAKE GAME", set - 5, 20, 40, border);
         DrawText(TextFormat("SCORE = %i", game.score), set - 5, set + (cell_size * cell_number) + 10, 40, border);
 
@@ -252,6 +375,5 @@ int main()
     }
 
     CloseWindow();
-
     return 0;
 }
